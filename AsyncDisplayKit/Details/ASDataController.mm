@@ -12,11 +12,18 @@
 
 #ifdef ENABLE_ASYNC_DATA_FETCHING
   #define BEGIN_DATA_FETCHING \
-    dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_HIGH, 0), ^{ \
-      [_dataSource dataControllerLockDataSourceForDataUpdating];
+    dispatch_block_t block = ^{
   #define END_DATA_FETCHING \
-      [_dataSource dataControllerUnlockDataSourceForDataUpdating]; \
-    });
+    }; \
+    if (_asyncDataFetchingEnabled) { \
+      [_dataSource dataControllerLockDataSourceForDataUpdating]; \
+      dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_HIGH, 0), ^{ \
+        block(); \
+        [_dataSource dataControllerUnlockDataSourceForDataUpdating]; \
+      }); \
+    } else { \
+      block(); \
+    }
 #else
   #define BEGIN_DATA_FETCHING
   #define END_DATA_FETCHING
@@ -89,6 +96,7 @@ static void *kASDataUpdatingQueueContext = &kASDataUpdatingQueueContext;
 
 @interface ASDataController () {
   NSMutableArray *_nodes;
+  BOOL _asyncDataFetchingEnabled;
 }
 
 @property (atomic, assign) NSUInteger batchUpdateCounter;
@@ -97,10 +105,11 @@ static void *kASDataUpdatingQueueContext = &kASDataUpdatingQueueContext;
 
 @implementation ASDataController
 
-- (instancetype)init {
+- (instancetype)initWithAsyncDataFetching:(BOOL)asyncDataFetchingEnabled {
   if (self = [super init]) {
     _nodes = [NSMutableArray array];
     _batchUpdateCounter = 0;
+    _asyncDataFetchingEnabled = asyncDataFetchingEnabled;
   }
 
   return self;
@@ -197,8 +206,7 @@ static void *kASDataUpdatingQueueContext = &kASDataUpdatingQueueContext;
 
 #pragma mark - Initial Data Loading
 
-- (void)initialDataLoadingWithAnimationOption:(ASDataControllerAnimationOptions)animationOption
-{
+- (void)initialDataLoadingWithAnimationOption:(ASDataControllerAnimationOptions)animationOption {
   BEGIN_DATA_FETCHING
 
   NSMutableArray *indexPaths = [NSMutableArray array];
